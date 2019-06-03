@@ -1,0 +1,110 @@
+# CBT outcome GWAMA Script 4. Population Principal Component Analysis # Population Stratification QC #
+
+source /mnt/lustre/users/k1620287/cbt.gwama/pca.config.conf
+module add bioinformatics/EIGENSOFT/6.1.4
+module add general/R
+
+for site in  $site1 $site2 $site3 $site4 $site5 
+do
+
+cd $wd/$site/qc
+
+	convertf -p <(printf "genotypename: "$site".LD.IBD.bed
+	snpname: "$site".LD.IBD.bim
+	indivname: "$site".LD.IBD.fam
+	outputformat: EIGENSTRAT
+	genotypeoutname: "$site".pop.strat.eigenstratgeno
+	snpoutname: "$site".pop.strat.snp
+	indivoutname: "$site".pop.strat.ind")
+
+	smartpca.perl \
+	-i $site.pop.strat.eigenstratgeno \
+	-a $site.pop.strat.snp \
+	-b $site.pop.strat.ind \
+	-o $site.pop.strat.pca \
+	-p $site.pop.strat.plot \
+	-e $site.pop.strat.eval \
+	-l $site.pop.strat.smartpca.log \
+	-m 0 \
+	-t 100 \
+	-k 100 \
+	-s 6
+
+	sed -i -e 's/^[ \t]*//' -e 's/:/ /g' $site.pop.strat.pca.evec
+
+	R --file=$gwas_scripts/PC-VS-OUTCOME_IN_R_SHORT.R --args $site.pop.strat $percentchange
+	R --file=$gwas_scripts/PC-VS-OUTCOME_IN_R_FULL.R --args $site.pop.strat $percentchange
+
+	awk '$3 <= 0.05 {print $2, $3}' $site.pop_strat.PC_Output_Associations_SHORT.txt > $site.associated.pcs
+	wc -l $site.associated.pcs
+	sig_assoc_pcs=`wc -l $site.associated.pcs | awk '{print $1}'`
+
+	smartpca.perl \
+	-i $site.pop.strat.eigenstratgeno \
+	-a $site.pop.strat.snp \
+	-b $site.pop.strat.ind \
+	-o $site.pop.strat.outliers.pca \
+	-p $site.pop.strat.outliers.plot \
+	-e $site.pop.strat.outliers.eval \
+	-l $site.pop.strat.outliers.smartpca.log \
+	-m 5 \
+	-t $sig.assoc.pcs \
+	-k 100 \
+	-s 6
+
+	sed -i -e 's/^[ \t]*//' -e 's/:/ /g' $site.pop.strat.outliers.pca.evec
+
+	R --file=$gwas_scripts/PlotPCs.R --args $site.pop.strat 1 2
+	R --file=$gwas_scripts/PlotPCs.R --args $site.pop.strat.outliers 1 2
+
+	awk '/REMOVED/ {print $3}' $site.pop.strat.outliers.smartpca.log | sed 's/:/ /g' > $site.pop.strat.outliers.outliers
+
+	plink --bfile $site.LD.IBD --remove $site.pop.strat.outliers.outliers --make-bed --out $site.LD.pop.strat
+	plink --bfile $site.IBD.cleaned --remove $site.pop.strat.outliers.outliers --make-bed --out $site.pop.strat
+	plink --bfile $site.LD.pop.strat --ibc --out $site.het
+
+	R --file=$gwas_scripts/IdHets.R --args $site.het
+
+	plink --bfile $site.LD.pop.strat --remove $site.het.LD.het.outliers.sample.exclude --make-bed --out $site.LD.het.cleaned
+	plink --bfile $site.pop.strat --remove $site.het.LD.het.outliers.sample.exclude --make-bed --out $site.maf05.geno01.mind01.hwe5.xy.ibd.pca
+
+	convertf -p <(printf "genotypename: $site.LD.het.cleaned
+	snpname: $site.LD.het.cleaned.bim
+	indivname: $site.LD.het.cleaned.fam
+	outputformat: EIGENSTRAT
+	genotypeoutname: $site.PCS.for.covariates.eigenstratgeno
+	snpoutname: $site.PCS.for.covariates.snp
+	indivoutname: $site.PCS.for.covariates.ind")
+
+	smartpca.perl \
+	-i $site.PCS.for.covariates.eigenstratgeno \
+	-a $site.PCS.for.covariates.snp \
+	-b $site.PCS.for.covariates.ind \
+	-o $site.PCS.for.covariates.pca \
+	-p $site.PCS.for.covariates.plot \
+	-e $site.PCS.for.covariates.eval \
+	-l $site.PCS.for.covariates.smartpca.log \
+	-m 0 \
+	-t 100 \
+	-k 100 \
+	-s 6 \
+
+	sed -i -e 's/^[ \t]*//' -e 's/:/ /g' $site.pcs.for.covariates.pca.evec
+	
+	R --file=$gwas.scripts/PC-VS-OUTCOME.IN.R.SHORT.R --args $site.pcs.for.covariates $pheno
+	
+	awk '$3 < 0.05 {print $1,$2,$3,$4}' $site.PCS.for.covariates.PC.Output.Associations.SHORT.txt > $site.significant.pcs.txt
+	
+	sig_assoc_pcs=`wc -l $site.significant.pcs.txt | awk '{print $1}'`
+
+	sed -i '1d' $site.PCS_for_covariates.pca.evec
+
+	echo 'IID FID PC1  PC2  PC3  PC4  PC5  PC6  PC7  PC8  PC9  PC10  PC11  PC12  PC13  PC14  PC15  PC16  PC17  PC18  PC19  PC20  PC21  PC22  PC23  PC24  PC25  PC26  PC27  PC28  PC29  PC30  PC31  PC32  PC33  PC34  PC35  PC36  PC37  PC38  PC39  PC40  PC41  PC42  PC43  PC44  PC45  PC46  PC47  PC48  PC49  PC50  PC51  PC52  PC53  PC54  PC55  PC56  PC57  PC58  PC59  PC60  PC61  PC62  PC63  PC64  PC65  PC66  PC67  PC68  PC69  PC70  PC71  PC72  PC73  PC74  PC75  PC76  PC77  PC78  PC79  PC80  PC81  PC82  PC83  PC84  PC85  PC86  PC87  PC88  PC89  PC90  PC91  PC92  PC93  PC94  PC95  PC96  PC97  PC98  PC99  PC100' > pc.header
+
+	cat pc.header $site.PCS_for_covariates.pca.evec | column -t > $wd/$site/covariates/$site.100.principal.components
+
+	awk '{for (i=1; i>=NF-'$sig_assoc_pcs'; i++) $i = $(i+'$sig_assoc_pcs'); NF='$sig_assoc_pcs'; print}' \
+	$wd/$site/covariates/$site.100.principal.components > $wd/$site/covariates/$site.pc.covariates.txt
+
+done
+
