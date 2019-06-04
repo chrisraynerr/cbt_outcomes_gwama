@@ -1,0 +1,159 @@
+
+source '$source'
+
+for site in $*
+do
+	cd $wd/imputation/$site
+
+	$bcftools query -f '%CHROM %POS %ID %REF %ALT %RefPanelAF %AN %AC %INFO/INFO\n' ${SGE_TASK_ID}.vcf.gz \
+	| awk '{print $1,$2,$3,$4,$5,$6,$7,$8,$9,$8/$7}' | bgzip -c > ${SGE_TASK_ID}.info.gz
+
+done
+
+for site in $*
+do
+	cd $wd/imputation/$site
+  
+  for chr in {1..23}; do
+    echo '
+    library(data.table)
+
+    setwd("'$wd'/imputation/'$site'")
+
+    file <- fread("zcat '$chr'.info.gz",data.table=F)
+
+    colnames(file) <- c("CHR","BP","SNP","A0","A1","HRC_AF_A1","AN","AC","Info","AF_A1")
+
+    genot <- fread("'$site'.Hardy_Imiss",h=T)[,c(1,2,14)]
+    
+    m <- merge(file,genot,by=c("CHR","SNP"),all.x=T)
+    
+    m$genotyped[is.na(m$genotyped)] <- 0
+    
+    write.table(m,gzfile("'$chr'.info.AF.gz"),col.names=T,row.names=F,quote=F,sep=" ")
+    
+    print("Done")
+    
+    q(save="no")' > $wd/imputation/$site/$site.$chr.info.AF.R;
+  done
+done 
+
+# Add all Chr R scripts into one script #
+
+cd $wd/imputation
+for site in  
+do
+	cd $wd/imputation/$site
+	for chr in {1..23}; do echo $site.$chr.info.AF.R; done > $wd/imputation/$site/$site.all.chr.info.files
+done
+
+# WRITE HRC INFO FILES #
+cd $wd/imputation
+for site in 
+do
+	echo '
+	#!/bin/sh
+	#$ -V
+	#$ -m ea
+	#$ -pe smp 12
+	#$ -l h_vmem=3G
+	#$ -l s_vmem=3G
+	#$ -l h_rt=05:00:00
+	#$ -S /bin/sh
+	#$ -m be
+	#$ -t 1-23
+	#$ -tc 12
+  
+  source '$source'
+  
+	cd $wd/imputation/'$site'/
+	
+  script=$(awk "NR==$SGE_TASK_ID" $wd/imputation/'$site'/'$site'.all.chr.info.files)
+	
+  $R CMD BATCH ${script};
+	' > $wd/imputation/$site/$site.hrc.info.files.sh
+done 
+
+for site in  
+do
+	qsub $wd/imputation/$site/$site.hrc.info.files.sh \
+	-hold_jid imputation.info.files.sh $site.hrc.info.files.sh
+done
+
+##########################################################################################
+# POST IMPUTATION CHECKS - CHECK INFO DISTRIBUTION - Write R script for all chromosomes  #
+##########################################################################################
+
+for site in 
+do
+for chr in {1..23};
+do
+echo '
+library(data.table)
+library(ggplot2)
+setwd("$wd/imputation/'$site'")
+file <- fread("zcat '$chr'.info.AF.gz",data.table=F)
+# Plot info distribution
+png("chr'$chr'.'$site'.info.distribution.png")
+hist(file$Info)
+dev.off()
+# Plot HRC AF against site AF
+png("chr'$chr'.'$site'.hrc_af_af_corr.png")
+plot(file$HRC_AF_A1,file$AF_A1)
+dev.off()
+# Plot info score against $site allele frequency, colour by Imputation/genotyped status
+scat <- ggplot(file,aes(x=Info,y=AF_A1)) +
+geom_point(aes(colour=factor(genotyped)))+
+facet_wrap("genotyped")
+ggsave("chr'$chr'.'$site'.Info.AF.png",scat)
+print("Done")
+q(save="no")' > $wd/imputation/$site/$site.$chr.plots.R; done
+done 
+
+#######################################################
+# WRITE SCRIPT TO INCLUDE ALL CHR PLOTS FOR EACH SITE # 
+#######################################################
+
+cd $wd/imputation
+for site in #############
+do
+cd $wd/imputation/$site
+for chr in {1..23}; do
+echo $site.$chr.plots.R
+done > $wd/imputation/$site/$site.imputation.plots.all.chr
+done 
+
+for site in ##############
+do
+cd $wd/imputation/$site
+cat <<'EOT'>> $wd/imputation/$site/imputation.plots.sh
+#!/bin/sh
+#$ -V
+#$ -m ea
+#$ -pe smp 10
+#$ -l h_vmem=3G
+#$ -l s_vmem=3G
+#$ -l h_rt=05:00:00
+#$ -S /bin/sh
+#$ -m be
+#$ -t 1-23
+#$ -tc 10
+
+for site in $* 
+do
+	cd $wd/imputation/$site
+	script=$(awk "NR==$SGE_TASK_ID" $wd/imputation/$site/$site.imputation.plots.all.chr)
+	$R CMD BATCH ${script};
+done
+EOT
+qsub $wd/imputation/$site/imputation.plots.sh $site
+
+# Only submit once previous job has finished
+# qsub -N $site.imputation_plots.sh -hold_jid $site.HRC_info_files.sh $site.imputation_plots.sh
+
+# Remove old files  #
+for site in 
+do
+	rm $site/*info.gz
+	rm $site/*.R $site/*.Rout
+done 
