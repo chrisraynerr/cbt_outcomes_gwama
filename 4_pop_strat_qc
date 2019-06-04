@@ -1,6 +1,8 @@
+#!/bin/sh
+
 # CBT outcome GWAMA Script 4. Population Principal Component Analysis # Population Stratification QC #
 
-source /mnt/lustre/users/k1620287/cbt.gwama/pca.config.conf
+source $1
 module add bioinformatics/EIGENSOFT/6.1.4
 module add general/R
 
