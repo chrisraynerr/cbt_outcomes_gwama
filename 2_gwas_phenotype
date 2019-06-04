@@ -1,0 +1,153 @@
+#!/bin/sh
+
+source $1
+
+echo '
+#### PACKAGES ####
+library(dplyr)
+library(lme4)
+library(data.table)
+
+site_1 <- fread("'$site_1_qc_input'", head=T)
+
+site_1 <- site_1[which(site_1$genotyped==1),]
+
+site_1 <- site_1 %>%
+  mutate(
+    IID = as.character(IID),
+    age = as.integer(age),
+    sex = as.factor(sex),
+    site = as.factor(site),
+    treatment = as.factor(treatment),
+    primary.diagnosis = as.factor(primary.diagnosis),
+    trial = as.factor(trial),
+	psych.med.bl = as.factor(psych.med.bl),
+    n.comorbidities = as.integer(n.comorbidities),
+    n.sessions = as.integer(n.sessions), # n sessions was dropped because of missing data
+	primary.bl = as.numeric(csr.bl),
+	primary.pt = as.numeric(csr.pt),
+	)
+
+site_1$primary.bl.z <- (site_1$primary.bl/(sd(site_1$primary.bl, na.rm=TRUE)))
+site_1$primary.pt.z <- (site_1$primary.pt/(sd(site_1$primary.bl, na.rm=TRUE)))
+
+site_1_bl_lmm <- lmer(primary.bl.z ~ (1 | trial) + (1 | site) + (1 | treatment) + (1 | primary.diagnosis) + age + sex + n.comorbidities + psych.med.bl, data = site_1, na.action = na.exclude)
+site_1_pt_lmm <- lmer(primary.pt.z ~ (1 | trial) + (1 | site) + (1 | treatment) + (1 | primary.diagnosis) + primary.bl.z + age + sex + n.comorbidities + psych.med.bl, data = site_1, na.action = na.exclude)
+
+site_1$primary.cbt.outcome.resids <- resid(lm(primary.pt.z ~ primary.bl.z + age + sex + site + treatment + primary.diagnosis + trial, data = site_1, na.action = na.exclude))
+
+site_1.phenotype <- site_1[,c("FID","IID", "primary.cbt.outcome.resids")]
+
+write.table(site_1.phenotype, "'$site_1_outcome'.txt", col.names=T, row.names=F, quote=F, sep=" ")
+saveRDS(site_1_bl_lmm, "'$site_1_outcome'.bl.lmm")
+saveRDS(site_1_pt_lmm, "'$site_1_outcome'.pt.lmm")
+
+
+$site_2 <- fread("'$site_2_qc_input'", head=T)
+
+site_2 <- site_2[which(site_2$genotyped==1),]
+
+site_2 <- site_2 %>%
+  mutate(
+    IID = as.character(IID),
+    age = as.integer(age),
+    sex = as.factor(sex),
+    primary.diagnosis = as.factor(primary.diagnosis),
+	psych.med.bl = as.factor(psych.med.bl),
+    n.comorbidities = as.integer(n.comorbidities),
+    n.sessions = as.integer(n.sessions),
+	primary.bl = as.numeric(madrs.bl),
+	primary.pt = as.numeric(madrs.pt),
+	)
+
+site_2$primary.bl.z <- (site_2$primary.bl/(sd(site_2$primary.bl, na.rm=TRUE)))
+site_2$primary.pt.z <- (site_2$primary.pt/(sd(site_2$primary.bl, na.rm=TRUE)))
+
+primary_bl_lm <- lm(primary.bl.z ~ age + sex + n.comorbidities + n.sessions + psych.med.bl, data = site_2, na.action = na.exclude)
+primary_pt_lm <- lm(primary.pt.z ~  + primary.bl.z + age + sex + n.comorbidities + psych.med.bl, data = site_2, na.action = na.exclude)
+
+site_2$primary.cbt.outcome.resids <- resid(lm(primary.pt.z ~ primary.bl.z + age + sex + site + treatment + primary.diagnosis + trial, data = site_2, na.action = na.exclude))
+
+site_2.phenotype <- site_2[,c("FID","IID", "primary.cbt.outcome.resids")]
+
+write.table(site_2.phenotype, "'$site_2_outcome_file'.txt", col.names=T, row.names=F, quote=F, sep=" ")
+saveRDS(primary_bl_lm, "'$site_2_outcome_file'.bl.lm")
+saveRDS(primary_pt_lm, "'$site_2_outcome_file'.pt.lm")
+
+
+###########################################################
+# the following three sites were combined into one sample #
+###########################################################
+
+site_3 <- fread("'$site_3_qc_input'", head=T)
+site_4 <- fread("'$site_4_qc_input'", head=T)
+site_5 <- fread("'$site_5_qc_input'", head=T)
+
+site_3 <- site_3[which($site_3$genotyped==1),]
+site_4 <- site_4[which($site_4$genotyped==1),]
+site_5 <- site_5[which($site_5$genotyped==1),]
+
+site_3 <- site_3 %>%
+	mutate(
+		FID = as.character(FID), IID = as.character(IID), age = as.integer(age), sex = as.factor(sex),
+		cohort = as.factor(cohort), site = as.factor(site), treatment = as.factor(treatment), primary.dsm = as.factor(primary.dsm),
+		psych.med.bl = as.factor(psych.med.bl), n.comorbidities = as.integer(n.comorbidities), n.sessions = as.integer(n.sessions))
+
+site_4 <- site_4 %>% 
+	mutate(
+		FID = as.character(FID), IID = as.character(IID), age = as.integer(age), sex = as.factor(sex), 
+		cohort = as.factor(cohort), site = as.factor(site), treatment = as.factor(treatment), primary.dsm = as.factor(primary.dsm),  
+		psych.med.bl = as.factor(psych.med.bl), n.comorbidities = as.integer(n.comorbidities), n.sessions = as.integer(n.sessions))
+
+site_5 <- site_5 %>%
+	mutate(
+		FID = as.character(FID),IID = as.character(IID), age = as.integer(age),sex = as.factor(sex),
+		cohort = as.factor(cohort),site = as.factor(site), treatment = as.factor(treatment), primary.dsm = as.factor(primary.dsm),
+		psych.med.bl = as.factor(psych.med.bl),  n.comorbidities = as.integer(n.comorbidities), n.sessions = as.integer(n.sessions))
+		
+site_3$primary.bl.z <- (site_3$site_3_bl/(sd(site_3$site_3_bl, na.rm=TRUE)))
+site_3$primary.pt.z <- (site_3$site_3_pt/(sd(site_3$site_3_bl, na.rm=TRUE)))
+site_3$primary.cbt.outcome.resids <- resid(lm(primary.pt.z ~ primary.bl.z + site + primary.dsm + age + sex + n.comorbidities + n.sessions + psych.med.bl, data = site_3, na.action = na.exclude))
+
+site_4$primary.bl.z <- (site_4$site_4_bl/(sd(site_4$site_4_bl, na.rm=TRUE)))
+site_4$primary.pt.z <- (site_4$site_4_pt/(sd(site_4$site_4_bl, na.rm=TRUE)))
+site_4$primary.cbt.outcome.resids <- resid(lm(primary.pt.z ~ primary.bl.z + site + primary.dsm + age + sex + n.comorbidities + n.sessions + psych.med.bl, data = site_4, na.action = na.exclude))
+
+site_5$primary.bl.z <- (site_5$site_5_bl/(sd(site_5$site_5_bl, na.rm=TRUE)))
+site_5$primary.pt.z <- (site_5$site_5_pt/(sd(site_5$site_5_bl, na.rm=TRUE)))
+site_5$primary.z.outcome.resids <- resid(lm(primary.pt.z ~ primary.bl.z + site + primary.dsm + age + sex + n.comorbidities + n.sessions, data = site_5, na.action = na.exclude))
+
+
+site_3 <- site_3[,c("FID","IID","age","sex","gender","cohort","site","treatment","primary.dsm","psych.med.bl","n.sessions","n.comorbidities","primary.bl.z","primary.pt.z","primary.z.outcome.resids")]
+site_5 <- site_5[,c("FID","IID","age","sex","gender","cohort","site","treatment","primary.dsm","psych.med.bl","n.sessions","n.comorbidities","primary.bl.z","primary.pt.z","primary.z.outcome.resids")]
+site_4 <- site_4[,c("FID","IID","age","sex","gender","cohort","site","treatment","primary.dsm","psych.med.bl","n.sessions","n.comorbidities","primary.bl.z","primary.pt.z","primary.z.outcome.resids")]
+
+anx_cohort <- dplyr::bind_rows(site_3, site_4, site_5)
+
+anx_cohort <- anx_cohort %>%
+	mutate(
+		FID = as.character(FID), IID = as.character(IID), age = as.integer(age), sex = as.factor(sex), gender = as.factor(gender),  
+		cohort = as.factor(cohort), site = as.factor(site), treatment = as.factor(treatment),primary.dsm = as.factor(primary.dsm), 
+		psych.med.bl = as.factor(psych.med.bl), n.comorbidities = as.integer(n.comorbidities), n.sessions = as.integer(n.sessions))
+  
+anx_cohort$site <- factor(anx_cohort$site, levels=c("bochum.clinic","bochum.dental","braunschweig","CLINIC","RCT","panicnet.1","panicnet.2"), labels=c("BC","BD","BS","KI T","KI C","PNC I", "PNC II"))
+
+anx_cohort$cohort <- factor(anx_cohort$cohort, levels=c("gxte","karolinska","panicnet"), labels=c("Bochum & Braunschweig","Karolinska","Panicnet Consortium"))	
+  
+anx_cohort.bl.lm <- lmer(primary.bl.z ~ (1 | cohort) + (1 | site) + age + gender + n.comorbidities + n.sessions + psych.med.bl + primary.dsm, data = anx_cohort, na.action = na.exclude)
+anx_cohort.pt.lm <- lmer(primary.pt.z ~ (1 | cohort) + (1 | site) + primary.bl.z + age + gender + n.comorbidities + n.sessions + psych.med.bl + primary.dsm, data = anx_cohort, na.action = na.exclude)
+
+anx_cohort$primary.cbt.outcome.resids <-  resid(lm(primary.z.outcomes.resids ~ cohort, data = anx_cohort, na.action = na.exclude))
+
+anx_cohort.phenotype <- anx_cohort[,c("FID","IID", "primary.cbt.outcome.resids")]
+
+write.table(anx_cohort.phenotype, "'$anx_cohort_outcome_file'.txt", col.names=T, row.names=F, quote=F, sep=" ")
+saveRDS(anx_cohort.bl.lm, "'$site_2_outcome_file'.bl.lm")
+saveRDS(anx_cohort.pt.lm, "'$site_2_outcome_file'.pt.lm")
+
+q(save="no")' > $scripts/cbt_outcome_gwas_phenotypes.R
+
+module load general/R
+
+R --file=$scripts/cbt_outcome_gwas_phenotypes.R
+
