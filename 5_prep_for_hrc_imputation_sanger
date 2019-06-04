@@ -1,0 +1,172 @@
+# Script 5. IMPUTATION TO HRC
+
+# Refer to Will Rayners pre-imputation check kit: http://www.well.ox.ac.uk/~wrayner/tools/index.html#Checking 
+# the pipeline for this can be found here: https://github.com/eauforest/imputePrepSanger
+
+# pre-imputation checks
+
+# CHECK THE GENOME BUILD FOR EACH COHORTS GENOTYPE FILES - USUALLY BUILD 37 / 19
+# for site in $site1 $site2 $site3 $site4 $site5 
+# do
+# source $wd/meta.analysis.config.conf
+# cd $wd/imputation/
+# wget ID_Build.py: Python script for quickly identifying the genome build of an unknown PLINK binary.
+
+# $plink \
+# --bfile $wd/qc/$site/$root \
+# --chr 6 \
+# --make-bed \
+# --out ./$site.chr6
+
+# python $gwas_scripts/ID_Build.py $site.chr6.bim
+
+# Get scripts, reference & strand files:
+	mkdir $wd/imputation/scripts
+	cd $wd/imputation/scripts
+	wget http://www.well.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.2.7.zip
+	wget http://www.well.ox.ac.uk/~wrayner/strand/update_build.sh
+	wget https://imputation.sanger.ac.uk/www/plink2ensembl.txt
+# wb1 (panicnet I): Human660W-Quad
+	wget http://www.well.ox.ac.uk/~wrayner/strand/Human660W-Quad_v1_A-b37.strand.zip
+# wb2 (panicnet II) & ki: HumanCoreExome# gxtc: HumanCoreExome
+	wget http://www.well.ox.ac.uk/~wrayner/strand/HumanCoreExome-12-v1-1-C-b37-strand.zip
+	wget http://www.well.ox.ac.uk/~wrayner/strand/HumanCoreExome-12v1-0_B-b37.strand.zip
+# gxte: PsychChip
+	wget http://www.well.ox.ac.uk/~wrayner/strand/PsychChip_15048346_B-b37-strand.zip
+
+source $wd/meta.analysis.config.conf
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	mkdir $wd/imputation/$site
+	cd $wd/imputation/$site
+done 
+
+site_1_qc=$wd/qc/wb1/wb1.maf05.geno01.mind01.hwe5.xy.ibd.pca
+site_1_strand=$wd/imputation/scripts/Human660W-Quad_v1_A-b37.strand
+site_1_updated_build=$wd/imputation/wb1/wb1.full.qc.build.updated
+
+site_2_qc=$wd/qc/wb2/wb2.maf05.geno01.mind01.hwe5.xy.ibd.pca
+site_2_strand=$wd/imputation/scripts/HumanCoreExome-12v1-0_B-b37.strand
+site_2_updated_build=$wd/imputation/wb2/wb2.full.qc.build.updated
+
+site_3_qc=$wd/qc/ki/ki.maf05.geno01.mind01.hwe5.xy.ibd.pca
+site_3_strand=$wd/imputation/scripts/HumanCoreExome-12v1-0_B-b37.strand
+site_3_updated_build=$wd/imputation/ki/ki.full.qc.build.updated
+
+site_4_qc=$wd/qc/gxte/gxte.maf05.geno01.mind01.hwe5.xy.ibd.pca
+site_4_strand=$wd/imputation/scripts/PsychChip_15048346_B-b37-strand
+site_4_updated_build=$wd/imputation/gxte/gxte.full.qc.build.updated
+
+site_5_qc=$wd/qc/gxtc/gxtc.maf05.geno01.mind01.hwe5.xy.ibd.pca
+site_5_strand=$wd/imputation/scripts/HumanCoreExome-12-v1-1-C-b37.strand
+site_5_updated_build=$wd/imputation/gxtc/gxtc.full.qc.build.updated
+
+
+################
+# Update build #
+################
+
+cd $wd/imputation/
+for i in 1 2 3 4 5
+do
+	sh $wd/imputation/scripts/update_build.sh $site_${i}_qc $site_${i}_strand $site_${i}_updated_build
+done
+
+##########################
+# Get allele frequencies #
+##########################
+
+source $wd/meta.analysis.config.conf
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	plink --bfile $site.full.qc.build.updated --freq --out $site.qc
+done
+
+#################
+# Allign to HRC #
+#################
+
+source $wd/meta.analysis.config.conf
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/imputation/$site/
+
+	perl $wd/imputation/scripts/HRC-1000G-check-bim_v4.2.7.pl \
+	-b $site.full.qc.build.updated.bim \
+	-f $site.qc.frq \
+	-r $wd/imputation/scripts/HRC.r1-1.GRCh37.wgs.mac5.sites.tab -h
+
+	sh Run-plink.sh
+done
+
+
+source $wd/meta.analysis.config.conf
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/imputation/$site/
+	module load bioinformatics/bcftools/1.3.1
+
+	bcftools annotate -Oz \
+	--rename-chrs $wd/imputation/scripts/plink2ensembl.txt \
+	$site.full.qc.build.updated_vcf.vcf.gz > $site.full.qc.build.updated.chr.vcf.gz
+
+	bcftools norm --check-ref e -f $wd/imputation/scripts/human_g1k_v37.fasta \
+	$site.full.qc.build.updated.chr.vcf.gz -o $site.refcheck
+
+	bcftools index $site.full.qc.build.updated.chr.vcf.gz
+	bcftools query -l $site.full.qc.build.updated.chr.vcf.gz
+done 
+
+# if in future datasets there are underscores _ are in the id names, this will 
+# cause errors when running imputation. If so, remove _ using sed then use: 
+# bcftools reheader -s $site.sample.ids.txt site.full.qc.build.updated.chr.vcf.gz > site.full.qc.build.updated.chr.id.vcf.gz
+
+
+####################################################################################
+# Generate information about genotyped SNPs, so that they can be identified later. #
+#                                                                                  #
+# Write reference file, change chr 23 to 'X' as in VCF files & add 'genotyped' col.#
+####################################################################################
+
+source $wd/meta.analysis.config.conf
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/imputation/$site/
+	module add bioinformatics/plink2/1.90b3.38
+
+	plink \
+	--vcf $site.full.qc.build.updated.chr.vcf.gz \
+	--make-bed \
+	--missing \
+	--hardy \
+	--out $site.full.qc.build.updated.chr
+
+	echo '
+	setwd("$wd/imputation/'$site'")
+	hardy <- read.table('$site'".full.qc.build.updated.chr.hwe",h=T)
+	lmiss <- read.table('$site'".full.qc.build.updated.chr.lmiss",h=T)
+	lmiss$Call_rate <- 1-lmiss$F_MISS
+	merge <- merge(hardy,lmiss,by=c("CHR","SNP"))
+	merge$CHR[merge$CHR==23] <- "X"
+	merge$genotyped <- 1
+	write.table(merge,$site".Hardy_Imiss",col.names=T,row.names=F,quote=F,sep=" ")
+	q(save="no")' > $site.hwe.miss.reffile.R
+	R --file=/$site.hwe.miss.reffile.R
+done
+
+###################################################
+# Transfer VCF to hard drive for upload to Sanger # 
+###################################################
+
+exit
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	rsync -av --progress $user@$host:$wd/imputation/$site/$site.full.qc.build.updated.chr.vcf.gz $home_directory/pre.imputed.files/ 
+done
+
+###########################################################################################################
+# Upload to sanger imputation service using globus, run imputation job and then download files using globus
+# https://imputation.sanger.ac.uk/
+###########################################################################################################
