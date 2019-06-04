@@ -1,0 +1,169 @@
+# Script 3. Genotype Quality Control #
+
+#!/bin/sh
+
+# This work flow follows the previously published protocol by Coleman et al 2016 doi: 10.1093/bfgp/elv037
+# and uses several scripts that can be found here: https://github.com/tnggroup/gwas_scripts
+
+source $1
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+
+	$plink --bfile $site --keep $keeps --make-bed --out $site.keeps
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+
+	$plink --bfile $site.keeps --update-sex $genders --make-bed --out $site.updated.gen
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do	
+	cd $wd/qc/$site
+
+	$plink --bfile $site.updated.gen --pheno $pheno --make-bed --out $site.updated.gen.phen
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do	
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.updated.gen.phen --maf 0.05 --make-bed --out $site.common
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.common --mind 0.01 --geno 0.01 --make-bed --out $site.filtered
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do	
+	cd $wd/qc/$site
+
+	$plink --bfile $site.filtered --missing --out $site.filtered.missing
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do	
+	cd $wd/qc/$site
+
+	$plink --bfile $site.filtered --hardy --out $site
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do	
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.filtered --hwe 0.00001 --make-bed --out  $site.hw.dropped
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.hw.dropped --indep-pairwise 1500 150 0.2 --out $site.LD.one
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site	
+	
+	$plink --bfile $site.hw.dropped --extract $site.LD.one.prune.in --make-bed --out $site.LD.two
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	awk -f $gwas_scripts/highLDregions4bim_b37.awk $site.LD.two.bim > $site.highLDexcludes
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+		
+	awk '($1 < 1) || ($1 > 22) {print $2}' $site.LD.two.bim > $site.autosomeexcludes
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+		
+	cat $site.highLDexcludes $site.autosomeexcludes > $site.highLD_and_autosomal_excludes
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.LD.two --exclude highLD_and_autosomal_excludes --make-bed --out $site.LD.three
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+		
+	$plink --bfile $site.LD.two --check-sex ycount 0.2 0.8 2 1 --out $site.sex.check.LD.two
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+		
+	$plink --bfile $site.LD.three --check-sex ycount 0.2 0.8 2 1 --out $site.sex.check.LD.three
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	grep "PROBLEM" $site.sex.check.LD.two.sexcheck > $site.discordant.individuals.txt
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.LD.three --genome --make-bed --out $site.IBD
+done
+	
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	awk '$10 >= 0.1875 {print $1, $2}' $site.IBD.genome > $site.IBD.outliers.txt
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.IBD --remove $site.IBD.outliers.txt --make-bed --out $site.no.close.relatives
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$R --file=$gwas_scripts/IndividualIBD.R --args $site 3.29
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.LD.three --remove $site.IBD_INDIV_outliers.txt --make-bed --out $site.LD.IBD
+done
+
+for site in $site1 $site2 $site3 $site4 $site5 
+do
+	cd $wd/qc/$site
+	
+	$plink --bfile $site.hw.dropped --remove $site.IBD_INDIV_outliers.txt --make-bed --out $site.IBD.cleaned
+done 
