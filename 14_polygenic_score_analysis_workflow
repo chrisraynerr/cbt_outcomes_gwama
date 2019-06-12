@@ -1,0 +1,84 @@
+# case-control base files
+
+#!/bin/sh
+
+source $1
+
+module add general/R
+
+Rscript $PRSice/PRSice.R \
+--dir . \
+--prsice $PRSice/PRSice \
+--base $2 \
+--target $target \
+--pheno-file $pheno \
+--cov-file $cov \
+--thread 4 \
+--binary-target F \
+--beta F \
+--chr CHR \
+--snp SNP \
+--A1 A1 \
+--A2 A2 \
+--stat OR \
+--se SE \
+--pvalue P \
+--clump-r2 0.25 \
+--bar-levels 1,0.5,0.1,0.05,0.01 \
+--no-full \
+--quantile 10 \
+--score std \
+--perm 10000 \
+--out $out \
+--fastscore
+
+while read bin_base_list 
+do 
+qsub bin.prs.sites.sh $source $bin_base_list # source file lists locations of PRSice software + target binary, pheno and covs for each site   
+done < bin_base_list # list of polygenic scores, where effect is OR
+done
+
+
+# quantitative trait base files
+
+#!/bin/sh
+
+source $1
+
+module add general/R
+
+Rscript $PRSice/PRSice.R \
+--dir . \
+--prsice $PRSice/PRSice \
+--base $2 \
+--target $target \
+--pheno-file $pheno \
+--cov-file $cov \
+--binary-target F \
+--beta T \
+--chr CHR \
+--snp SNP \
+--A1 A1 \
+--A2 A2 \
+--stat BETA \
+--se SE \
+--pvalue P \
+--clump-r2 0.25 \
+--bar-levels 1,0.5,0.1,0.05,0.01 \
+--no-full \
+--quantile 10 \
+--score std \
+--perm 10000 \
+--out /users/k1620287/brc_scratch/meta.analysis/analysis/final_analyses/pgs/$2/$1.P.V2 \
+--fastscore
+
+while read quant_base_list 
+do 
+qsub quant.prs.sites.sh $source $quant_base_list # source file lists locations of PRSice software + target binary, pheno and covs for each site   
+done < quant_base_list # list of polygenic scores, where effect is beta
+done
+
+
+
+
+
