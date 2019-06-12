@@ -1,0 +1,54 @@
+
+##############################################
+
+#!/bin/sh
+
+# Make GRM
+
+source $1
+
+$gcta \
+--bfile $bin \
+--autosome \
+--maf 0.01 \
+--thread-num 2 \
+--grm-cutoff 0.025 \
+--make-grm \
+--out $grm
+
+
+##############################################
+
+#!/bin/sh
+
+# Perform GCTA-GREML
+
+source $1
+
+$gcta \
+--grm $grm \
+--pheno $pheno \
+--qcovar $qcov  \
+--thread-num 4 \
+--reml \
+--out $out
+
+
+#############################################
+
+#!/bin/sh
+
+source $1
+
+$gcta \
+--grm $grm \
+--bfile $bin \
+--pheno $pheno \
+--covar $cov \
+--qcovar $qcov  \
+--thread-num 8 \
+--mlma-loco \
+--out $out
+
+#############################################
+
